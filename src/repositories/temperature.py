@@ -21,11 +21,13 @@ class TemperatureRepository:
         return db_temperature
 
     def create_bulk(self, temperatures: list[TemperatureCreate]) -> list[Temperature]:
+        current_time = datetime.now(UTC)  # используем одно время для всех записей
+
         db_temperatures = [
             Temperature(
                 city_id=temp.city_id,
                 temperature=temp.temperature,
-                date_time=datetime.now(UTC)
+                date_time=current_time
             )
             for temp in temperatures
         ]
@@ -41,10 +43,12 @@ class TemperatureRepository:
     def get_all(self, skip: int = 0, limit: int = 100) -> list[Temperature]:
         return self.db.query(Temperature).offset(skip).limit(limit).all()
 
-    def get_by_city_id(self,
-                       city_id: int,
-                       skip: int = 0,
-                       limit: int = 100) -> list[Temperature]:
+    def get_by_city_id(
+        self,
+        city_id: int,
+        skip: int = 0,
+        limit: int = 100
+    ) -> list[Temperature]:
         return (
             self.db.query(Temperature)
             .filter(Temperature.city_id == city_id)

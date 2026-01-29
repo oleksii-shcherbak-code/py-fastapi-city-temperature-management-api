@@ -139,6 +139,7 @@ cython_debug/
 #.idea/
 
 # SQLite
+*.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 
