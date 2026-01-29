@@ -1,10 +1,6 @@
 from fastapi import FastAPI
 
-from src.db import Base, engine
 from src.routers import city_router, temperature_router
-
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Weather API",

@@ -1,6 +1,6 @@
 from typing import List, Optional
-import httpx
 import asyncio
+import httpx
 
 from fastapi import (
     APIRouter,
@@ -9,9 +9,9 @@ from fastapi import (
     status,
     Query
 )
+from fastapi.concurrency import run_in_threadpool
 
 from src.schemas.temperature import TemperatureCreate, TemperatureRead
-
 from src.repositories import TemperatureRepository, CityRepository
 from src.dependencies import get_temperature_repository, get_city_repository
 
@@ -26,7 +26,7 @@ async def fetch_temperature_for_city(city_name: str) -> Optional[float]:
                 "name": city_name,
                 "count": 1,
                 "language": "en",
-                "format": "json"
+                "format": "json",
             }
 
             geo_response = await client.get(geocoding_url, params=geocoding_params)
@@ -43,31 +43,30 @@ async def fetch_temperature_for_city(city_name: str) -> Optional[float]:
             weather_params = {
                 "latitude": latitude,
                 "longitude": longitude,
-                "current_weather": "true"
+                "current_weather": "true",
             }
 
             weather_response = await client.get(weather_url, params=weather_params)
             weather_response.raise_for_status()
             weather_data = weather_response.json()
 
-            temperature = weather_data.get("current_weather", {}).get("temperature")
-            return temperature
+            return weather_data.get("current_weather", {}).get("temperature")
 
-    except Exception as e:
+    except Exception:
         return None
 
 
 @router.post("/update", status_code=status.HTTP_201_CREATED)
 async def update_temperatures(
-        city_repo: CityRepository = Depends(get_city_repository),
-        temp_repo: TemperatureRepository = Depends(get_temperature_repository)
+    city_repo: CityRepository = Depends(get_city_repository),
+    temp_repo: TemperatureRepository = Depends(get_temperature_repository),
 ):
-    cities = city_repo.get_all()
+    cities = await run_in_threadpool(city_repo.get_all)
 
     if not cities:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No cities found in database"
+            detail="No cities found in database",
         )
 
     tasks = [fetch_temperature_for_city(city.name) for city in cities]
@@ -87,7 +86,10 @@ async def update_temperatures(
             failed_cities.append(city.name)
 
     if temperature_records:
-        temp_repo.create_bulk(temperature_records)
+        await run_in_threadpool(
+            temp_repo.create_bulk,
+            temperature_records,
+        )
 
     return {
         "message": "Temperature update completed",
@@ -95,24 +97,24 @@ async def update_temperatures(
         "successful_updates": len(successful_cities),
         "failed_updates": len(failed_cities),
         "successful_cities": successful_cities,
-        "failed_cities": failed_cities
+        "failed_cities": failed_cities,
     }
 
 
 @router.get("/", response_model=List[TemperatureRead])
 def get_temperatures(
-        city_id: Optional[int] = Query(None, description="Filter by city ID"),
-        skip: int = 0,
-        limit: int = 100,
-        city_repo: CityRepository = Depends(get_city_repository),
-        temp_repo: TemperatureRepository = Depends(get_temperature_repository)
+    city_id: Optional[int] = Query(None, description="Filter by city ID"),
+    skip: int = 0,
+    limit: int = 100,
+    city_repo: CityRepository = Depends(get_city_repository),
+    temp_repo: TemperatureRepository = Depends(get_temperature_repository),
 ):
     if city_id is not None:
         city = city_repo.get_by_id(city_id)
         if not city:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"City with id {city_id} not found"
+                detail=f"City with id {city_id} not found",
             )
         temperatures = temp_repo.get_by_city_id(city_id, skip, limit)
     else:
